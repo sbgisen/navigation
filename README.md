@@ -1,3 +1,9 @@
+## sbigisen NOTE
+
+Everything except base_local_planner is ignored when building.
+
+When editing and using other packages inside, please edit navigation/package.xml and remove the CATKIN_IGNORE file from the package you want to edit / use as well.
+
 ROS Navigation Stack
 ====================
 
