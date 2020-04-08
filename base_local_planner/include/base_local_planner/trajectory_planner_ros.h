@@ -216,6 +216,7 @@ namespace base_local_planner {
       bool rotating_to_goal_;
       bool reached_goal_;
       bool latch_xy_goal_tolerance_, xy_tolerance_latch_;
+      bool escape_backward_only_;
 
       ros::Publisher g_plan_pub_, l_plan_pub_;
 

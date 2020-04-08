@@ -105,6 +105,7 @@ namespace base_local_planner {
       double heading_scoring_timestep;
       double max_vel_x, min_vel_x;
       double backup_vel;
+      double backup_vel_theta;
       double stop_time_buffer;
       std::string world_model_type;
       rotating_to_goal_ = false;
@@ -167,6 +168,7 @@ namespace base_local_planner {
       private_nh.param("path_distance_bias", pdist_scale, 0.6);
       private_nh.param("goal_distance_bias", gdist_scale, 0.8);
       private_nh.param("occdist_scale", occdist_scale, 0.01);
+      private_nh.param("escape_backward_only", escape_backward_only_, true);
 
       bool meter_scoring;
       if ( ! private_nh.hasParam("meter_scoring")) {
@@ -209,6 +211,8 @@ namespace base_local_planner {
       if(backup_vel >= 0.0)
         ROS_WARN("You've specified a positive escape velocity. This is probably not what you want and will cause the robot to move forward instead of backward. You should probably change your escape_vel parameter to be negative");
 
+      backup_vel_theta = 0.1;
+      private_nh.getParam("escape_vel_theta", backup_vel_theta);
       private_nh.param("world_model", world_model_type, std::string("costmap"));
       private_nh.param("dwa", dwa, true);
       private_nh.param("heading_scoring", heading_scoring, false);
@@ -232,8 +236,9 @@ namespace base_local_planner {
       tc_ = new TrajectoryPlanner(*world_model_, *costmap_, footprint_spec_,
           acc_lim_x_, acc_lim_y_, acc_lim_theta_, sim_time, sim_granularity, vx_samples, vtheta_samples, pdist_scale,
           gdist_scale, occdist_scale, heading_lookahead, oscillation_reset_dist, escape_reset_dist, escape_reset_theta, holonomic_robot,
-          max_vel_x, min_vel_x, max_vel_th_, min_vel_th_, min_in_place_vel_th_, backup_vel,
-          dwa, heading_scoring, heading_scoring_timestep, meter_scoring, simple_attractor, y_vels, stop_time_buffer, sim_period_, angular_sim_granularity);
+          max_vel_x, min_vel_x, max_vel_th_, min_vel_th_, min_in_place_vel_th_, backup_vel, backup_vel_theta,
+          dwa, heading_scoring, heading_scoring_timestep, meter_scoring, simple_attractor, y_vels, stop_time_buffer, sim_period_,
+          angular_sim_granularity, escape_backward_only_);
 
       map_viz_.initialize(name, global_frame_, boost::bind(&TrajectoryPlanner::getCellCosts, tc_, _1, _2, _3, _4, _5, _6));
       initialized_ = true;

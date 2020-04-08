@@ -97,6 +97,7 @@ namespace base_local_planner {
        * @param min_vel_th The minimum rotational velocity the controller will explore
        * @param min_in_place_vel_th The absolute value of the minimum in-place rotational velocity the controller will explore
        * @param backup_vel The velocity to use while backing up
+       * @param backup_vel_theta The rotational velocity to use while backing up
        * @param dwa Set this to true to use the Dynamic Window Approach, false to use acceleration limits
        * @param heading_scoring Set this to true to score trajectories based on the robot's heading after 1 timestep
        * @param heading_scoring_timestep How far to look ahead in time when we score heading based trajectories
@@ -104,6 +105,7 @@ namespace base_local_planner {
        * @param simple_attractor Set this to true to allow simple attraction to a goal point instead of intelligent cost propagation
        * @param y_vels A vector of the y velocities the controller will explore
        * @param angular_sim_granularity The distance between simulation points for angular velocity should be small enough that the robot doesn't hit things
+       * @param escape_backward_only
        */
       TrajectoryPlanner(WorldModel& world_model, 
           const costmap_2d::Costmap2D& costmap, 
@@ -118,12 +120,14 @@ namespace base_local_planner {
           double max_vel_x = 0.5, double min_vel_x = 0.1, 
           double max_vel_th = 1.0, double min_vel_th = -1.0, double min_in_place_vel_th = 0.4,
           double backup_vel = -0.1,
+          double backup_vel_theta_ = 0.1,
           bool dwa = false, bool heading_scoring = false, double heading_scoring_timestep = 0.1,
           bool meter_scoring = true,
           bool simple_attractor = false,
           std::vector<double> y_vels = std::vector<double>(0),
           double stop_time_buffer = 0.2,
-          double sim_period = 0.1, double angular_sim_granularity = 0.025);
+          double sim_period = 0.1, double angular_sim_granularity = 0.025,
+          bool escape_backward_only_ = true);
 
       /**
        * @brief  Destructs a trajectory controller
@@ -275,6 +279,8 @@ namespace base_local_planner {
       bool strafe_right, strafe_left; ///< @brief Booleans to keep track of strafe direction for the robot
 
       bool escaping_; ///< @brief Boolean to keep track of whether we're in escape mode
+      int escaping_try_counter_; ///< @brief escaping_try_counter
+
       bool meter_scoring_;
 
       double goal_x_,goal_y_; ///< @brief Storage for the local goal the robot is pursuing
@@ -293,6 +299,8 @@ namespace base_local_planner {
       double acc_lim_x_, acc_lim_y_, acc_lim_theta_; ///< @brief The acceleration limits of the robot
 
       double prev_x_, prev_y_; ///< @brief Used to calculate the distance the robot has traveled before reseting oscillation booleans
+      double prev_theta_; ///< @brief Used to calculate the angle that the robot has rotated before reseting oscillation booleans
+
       double escape_x_, escape_y_, escape_theta_; ///< @brief Used to calculate the distance the robot has traveled before reseting escape booleans
 
       Trajectory traj_one, traj_two; ///< @brief Used for scoring trajectories
@@ -305,6 +313,7 @@ namespace base_local_planner {
       double max_vel_x_, min_vel_x_, max_vel_th_, min_vel_th_, min_in_place_vel_th_; ///< @brief Velocity limits for the controller
 
       double backup_vel_; ///< @brief The velocity to use while backing up
+      double backup_vel_theta_; ///< @brief The rotational velocity to use while backing up
 
       bool dwa_;  ///< @brief Should we use the dynamic window approach?
       bool heading_scoring_; ///< @brief Should we score based on the rollout approach or the heading approach
@@ -315,6 +324,7 @@ namespace base_local_planner {
 
       double stop_time_buffer_; ///< @brief How long before hitting something we're going to enforce that the robot stop
       double sim_period_; ///< @brief The number of seconds to use to compute max/min vels for dwa
+      bool escape_backward_only_;
 
       double inscribed_radius_, circumscribed_radius_;
 

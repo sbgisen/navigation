@@ -68,7 +68,7 @@ namespace base_local_planner{
 
       max_vel_x_ = config.max_vel_x;
       min_vel_x_ = config.min_vel_x;
-      
+
       max_vel_th_ = config.max_vel_theta;
       min_vel_th_ = config.min_vel_theta;
       min_in_place_vel_th_ = config.min_in_place_vel_theta;
@@ -110,8 +110,9 @@ namespace base_local_planner{
       heading_lookahead_ = config.heading_lookahead;
 
       holonomic_robot_ = config.holonomic_robot;
-      
+
       backup_vel_ = config.escape_vel;
+      backup_vel_theta_ = config.escape_vel_theta;
 
       dwa_ = config.dwa;
 
@@ -135,7 +136,7 @@ namespace base_local_planner{
       }
 
       y_vels_ = y_vels;
-      
+      escape_backward_only_ = config.escape_backward_only;
   }
 
   TrajectoryPlanner::TrajectoryPlanner(WorldModel& world_model,
@@ -151,8 +152,10 @@ namespace base_local_planner{
       double max_vel_x, double min_vel_x,
       double max_vel_th, double min_vel_th, double min_in_place_vel_th,
       double backup_vel,
+      double backup_vel_theta,
       bool dwa, bool heading_scoring, double heading_scoring_timestep, bool meter_scoring, bool simple_attractor,
-      vector<double> y_vels, double stop_time_buffer, double sim_period, double angular_sim_granularity)
+      vector<double> y_vels, double stop_time_buffer, double sim_period, double angular_sim_granularity,
+      bool escape_backward_only)
     : path_map_(costmap.getSizeInCellsX(), costmap.getSizeInCellsY()),
       goal_map_(costmap.getSizeInCellsX(), costmap.getSizeInCellsY()),
       costmap_(costmap),
@@ -161,14 +164,15 @@ namespace base_local_planner{
     vx_samples_(vx_samples), vtheta_samples_(vtheta_samples),
     pdist_scale_(pdist_scale), gdist_scale_(gdist_scale), occdist_scale_(occdist_scale),
     acc_lim_x_(acc_lim_x), acc_lim_y_(acc_lim_y), acc_lim_theta_(acc_lim_theta),
-    prev_x_(0), prev_y_(0), escape_x_(0), escape_y_(0), escape_theta_(0), heading_lookahead_(heading_lookahead),
+    prev_x_(0), prev_y_(0), prev_theta_(0), escape_x_(0), escape_y_(0), escape_theta_(0), heading_lookahead_(heading_lookahead),
     oscillation_reset_dist_(oscillation_reset_dist), escape_reset_dist_(escape_reset_dist),
     escape_reset_theta_(escape_reset_theta), holonomic_robot_(holonomic_robot),
     max_vel_x_(max_vel_x), min_vel_x_(min_vel_x),
     max_vel_th_(max_vel_th), min_vel_th_(min_vel_th), min_in_place_vel_th_(min_in_place_vel_th),
-    backup_vel_(backup_vel),
+    backup_vel_(backup_vel), backup_vel_theta_(backup_vel_theta),
     dwa_(dwa), heading_scoring_(heading_scoring), heading_scoring_timestep_(heading_scoring_timestep),
-    simple_attractor_(simple_attractor), y_vels_(y_vels), stop_time_buffer_(stop_time_buffer), sim_period_(sim_period)
+    simple_attractor_(simple_attractor), y_vels_(y_vels), stop_time_buffer_(stop_time_buffer), sim_period_(sim_period),
+    escaping_try_counter_(0), escape_backward_only_(escape_backward_only)
   {
     //the robot is not stuck to begin with
     stuck_left = false;
@@ -846,11 +850,11 @@ namespace base_local_planner{
     }
 
     //and finally, if we can't do anything else, we want to generate trajectories that move backwards slowly
-    vtheta_samp = 0.0;
-    vx_samp = backup_vel_;
-    vy_samp = 0.0;
-    generateTrajectory(x, y, theta, vx, vy, vtheta, vx_samp, vy_samp, vtheta_samp,
-        acc_x, acc_y, acc_theta, impossible_cost, *comp_traj);
+    // vtheta_samp = 0.0;
+    // vx_samp = backup_vel_;
+    // vy_samp = 0.0;
+    // generateTrajectory(x, y, theta, vx, vy, vtheta, vx_samp, vy_samp, vtheta_samp,
+    //     acc_x, acc_y, acc_theta, impossible_cost, *comp_traj);
 
     //if the new trajectory is better... let's take it
     /*
@@ -862,12 +866,103 @@ namespace base_local_planner{
        */
 
     //we'll allow moving backwards slowly even when the static map shows it as blocked
-    swap = best_traj;
-    best_traj = comp_traj;
-    comp_traj = swap;
+    // swap = best_traj;
+    // best_traj = comp_traj;
+    // comp_traj = swap;
+
+    //only enter escape mode when the planner has given a valid goal point
+    //if (!escaping_ && best_traj->cost_ > -2.0) {
+    if (!escaping_) {
+      escape_x_ = x;
+      escape_y_ = y;
+      escape_theta_ = theta;
+      escaping_ = true;
+    }
+    if (escape_backward_only_) {  // default
+            vtheta_samp = 0.0;
+            vx_samp = backup_vel_;
+            vy_samp = 0.0;
+
+            generateTrajectory(x, y, theta, vx, vy, vtheta, vx_samp, vy_samp, vtheta_samp,
+                    acc_x, acc_y, acc_theta, impossible_cost, *comp_traj);
+
+            //we'll allow moving backwards slowly even when the static map shows it as blocked
+            swap = best_traj;
+            best_traj = comp_traj;
+            comp_traj = swap;
+        } else {  // KM modified 2017/12/21
+            double vtheta_escaping[] = {-backup_vel_theta_, -backup_vel_theta_/2., 0., backup_vel_theta_/2, backup_vel_theta_};
+            //double vx_escaping[] = {0., backup_vel_/2., backup_vel_};
+            double vx_escaping[] = {-backup_vel_, -backup_vel_/2., 0., backup_vel_/2., backup_vel_};
+            //and finally, if we can't do anything else, we want to generate trajectories that move backwards slowly
+            //vtheta_samp = 0.0;
+            //vx_samp = backup_vel_;
+            vy_samp = 0.0;
+            for (int tt = 0; tt < sizeof(vtheta_escaping)/sizeof(*vtheta_escaping); tt++) {
+                for (int xx = 0; xx < sizeof(vx_escaping)/sizeof(*vx_escaping); xx++) {
+                    vtheta_samp = vtheta_escaping[tt];
+                    vx_samp = vx_escaping[tt];
+                    // try to move at least
+                    if (vtheta_samp == 0 && vx_samp == 0) continue;
+
+                    generateTrajectory(x, y, theta, vx, vy, vtheta, vx_samp, vy_samp, vtheta_samp,
+                            acc_x, acc_y, acc_theta, impossible_cost, *comp_traj);
+
+                    //if the new trajectory is better... let's take it
+                    if(comp_traj->cost_ >= 0 && (comp_traj->cost_ < best_traj->cost_ || best_traj->cost_ < 0)){
+                		//if we haven't already tried rotating
+                        if ((comp_traj->thetav_ < 0 && !stuck_left) || (comp_traj->thetav_ > 0 && !stuck_right)) {
+                          swap = best_traj;
+                          best_traj = comp_traj;
+                          comp_traj = swap;
+                        }
+                    }
+                } // end for loop on vx_escaping
+            }  // end for loop on vtheta_escaping
+        }  // end if not escape_backward_only_
+
+        if (!escape_backward_only_ && best_traj->cost_ < 0.) {
+            //vtheta_samp = backup_vel_theta_;
+    		vtheta_samp = 0.;
+    		vx_samp = backup_vel_;
+            //calculate positions
+            double x_i = computeNewXPosition(x, vx_samp, vy_samp, theta, sim_time_);
+            double y_i = computeNewYPosition(y, vx_samp, vy_samp, theta, sim_time_);
+    		unsigned int cell_x;
+    		unsigned int cell_y;
+            if(costmap_.worldToMap(x_i, y_i, cell_x, cell_y)){
+    		    if (static_cast<double>(costmap_.getCost(cell_x, cell_y)) < 200) {
+    		    	generateTrajectory(x, y, theta, vx, vy, vtheta, vx_samp, vy_samp, vtheta_samp,
+    		    			acc_x, acc_y, acc_theta, impossible_cost, *best_traj);  // best_traj !
+    		    	std::cout << "best_traj->cost_ " << best_traj->cost_ << std::endl;
+                    std::cout << "getCost " << static_cast<double>(costmap_.getCost(cell_x, cell_y)) << std::endl;
+    		    }
+    		}
+    	}
+        //char s[256] = {"\0"};
+        //sprintf(s, "Trying to go back. best_traj->cost_ = %f", best_traj->cost_);
+        //ROS_DEBUG(s);
+    	if ( best_traj->xv_ == 0 ) {
+    		if (!stuck_left && !stuck_right) {
+                //set the position we must move a certain distance away from
+                prev_theta_ = theta;
+    		}
+    	    if (best_traj->thetav_ < 0) {
+    	    	if (rotating_right){
+    	    		stuck_right = true;
+    	    	}
+    	    	rotating_left = true;
+    	    } else if(best_traj->thetav_ > 0) {
+    	    	if(rotating_left){
+    	    		stuck_left = true;
+    	    	}
+    	    	rotating_right = true;
+    	    }
+    	}
 
     double dist = hypot(x - prev_x_, y - prev_y_);
-    if (dist > oscillation_reset_dist_) {
+    if (abs(theta - prev_theta_) > oscillation_reset_dist_) {
+    // if (dist > oscillation_reset_dist_) {
       rotating_left = false;
       rotating_right = false;
       strafe_left = false;
@@ -879,24 +974,27 @@ namespace base_local_planner{
     }
 
     //only enter escape mode when the planner has given a valid goal point
-    if (!escaping_ && best_traj->cost_ > -2.0) {
-      escape_x_ = x;
-      escape_y_ = y;
-      escape_theta_ = theta;
-      escaping_ = true;
-    }
+    // if (!escaping_ && best_traj->cost_ > -2.0) {
+    //   escape_x_ = x;
+    //   escape_y_ = y;
+    //   escape_theta_ = theta;
+    //   escaping_ = true;
+    // }
 
     dist = hypot(x - escape_x_, y - escape_y_);
+    escaping_try_counter_++;
 
     if (dist > escape_reset_dist_ ||
-        fabs(angles::shortest_angular_distance(escape_theta_, theta)) > escape_reset_theta_) {
+        fabs(angles::shortest_angular_distance(escape_theta_, theta)) > escape_reset_theta_ || escaping_try_counter_ > 5) {
       escaping_ = false;
+      escaping_try_counter_ = 0;
     }
 
 
     //if the trajectory failed because the footprint hits something, we're still going to back up
-    if(best_traj->cost_ == -1.0)
-      best_traj->cost_ = 1.0;
+    // if (best_traj->cost_ == -1.0) {
+    //   best_traj->cost_ = 1.0;
+    // }
 
     return *best_traj;
 
@@ -989,5 +1087,3 @@ namespace base_local_planner{
   }
 
 };
-
-
