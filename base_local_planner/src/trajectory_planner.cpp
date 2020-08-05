@@ -88,6 +88,7 @@ namespace base_local_planner{
         double resolution = costmap_.getResolution();
         goal_distance_bias_ *= resolution;
         path_distance_bias_ *= resolution;
+        occdist_scale_ *= resolution;
       }
 
       oscillation_reset_dist_ = config.oscillation_reset_dist;
