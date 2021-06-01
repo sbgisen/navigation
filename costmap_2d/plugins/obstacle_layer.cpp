@@ -157,7 +157,7 @@ void ObstacleLayer::onInitialize()
       boost::shared_ptr<tf2_ros::MessageFilter<sensor_msgs::LaserScan> > filter(
         new tf2_ros::MessageFilter<sensor_msgs::LaserScan>(*sub, *tf_, global_frame_, 50, g_nh));
 
-      if (inf_is_valid)
+      if (inf_is_valid || nan_is_valid)
       {
         filter->registerCallback(boost::bind(&ObstacleLayer::laserScanValidInfNanCallback, this, _1,
                                             observation_buffers_.back(), inf_is_valid, nan_is_valid));
