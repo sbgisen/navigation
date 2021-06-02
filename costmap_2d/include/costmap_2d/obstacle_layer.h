@@ -85,13 +85,18 @@ public:
   void laserScanCallback(const sensor_msgs::LaserScanConstPtr& message,
                          const boost::shared_ptr<costmap_2d::ObservationBuffer>& buffer);
 
-   /**
-    * @brief A callback to handle buffering LaserScan messages which need filtering to turn Inf values into range_max.
-    * @param message The message returned from a message notifier
-    * @param buffer A pointer to the observation buffer to update
-    */
-  void laserScanValidInfCallback(const sensor_msgs::LaserScanConstPtr& message,
-                                 const boost::shared_ptr<ObservationBuffer>& buffer);
+  /**
+   * @brief A callback to handle buffering LaserScan messages which need filtering to turn Inf and Nan values into
+   * range_max.
+   * @param message The message returned from a message notifier
+   * @param buffer A pointer to the observation buffer to update
+   * @param inf_is_valid Turn Inf values into range_max
+   * @param nan_is_valid Turn Nan values into range_max
+   */
+  void laserScanValidInfNanCallback(const sensor_msgs::LaserScanConstPtr& message,
+                                    const boost::shared_ptr<ObservationBuffer>& buffer,
+                                    const bool inf_is_valid,
+                                    const bool nan_is_valid);
 
   /**
    * @brief  A callback to handle buffering PointCloud messages

@@ -89,7 +89,7 @@ void ObstacleLayer::onInitialize()
     // get the parameters for the specific topic
     double observation_keep_time, expected_update_rate, min_obstacle_height, max_obstacle_height;
     std::string topic, sensor_frame, data_type;
-    bool inf_is_valid, clearing, marking;
+    bool nan_is_valid, inf_is_valid, clearing, marking;
 
     source_node.param("topic", topic, source);
     source_node.param("sensor_frame", sensor_frame, std::string(""));
@@ -98,6 +98,7 @@ void ObstacleLayer::onInitialize()
     source_node.param("data_type", data_type, std::string("PointCloud"));
     source_node.param("min_obstacle_height", min_obstacle_height, 0.0);
     source_node.param("max_obstacle_height", max_obstacle_height, 2.0);
+    source_node.param("nan_is_valid", nan_is_valid, false);
     source_node.param("inf_is_valid", inf_is_valid, false);
     source_node.param("clearing", clearing, false);
     source_node.param("marking", marking, true);
@@ -156,10 +157,10 @@ void ObstacleLayer::onInitialize()
       boost::shared_ptr<tf2_ros::MessageFilter<sensor_msgs::LaserScan> > filter(
         new tf2_ros::MessageFilter<sensor_msgs::LaserScan>(*sub, *tf_, global_frame_, 50, g_nh));
 
-      if (inf_is_valid)
+      if (inf_is_valid || nan_is_valid)
       {
-        filter->registerCallback(boost::bind(&ObstacleLayer::laserScanValidInfCallback, this, _1,
-                                            observation_buffers_.back()));
+        filter->registerCallback(boost::bind(&ObstacleLayer::laserScanValidInfNanCallback, this, _1,
+                                            observation_buffers_.back(), inf_is_valid, nan_is_valid));
       }
       else
       {
@@ -267,8 +268,10 @@ void ObstacleLayer::laserScanCallback(const sensor_msgs::LaserScanConstPtr& mess
   buffer->unlock();
 }
 
-void ObstacleLayer::laserScanValidInfCallback(const sensor_msgs::LaserScanConstPtr& raw_message,
-                                              const boost::shared_ptr<ObservationBuffer>& buffer)
+void ObstacleLayer::laserScanValidInfNanCallback(const sensor_msgs::LaserScanConstPtr& raw_message,
+                                              const boost::shared_ptr<ObservationBuffer>& buffer,
+                                              const bool inf_is_valid,
+                                              const bool nan_is_valid)
 {
   // Filter positive infinities ("Inf"s) to max_range.
   float epsilon = 0.0001;  // a tenth of a millimeter
@@ -276,7 +279,7 @@ void ObstacleLayer::laserScanValidInfCallback(const sensor_msgs::LaserScanConstP
   for (size_t i = 0; i < message.ranges.size(); i++)
   {
     float range = message.ranges[ i ];
-    if (!std::isfinite(range) && range > 0)
+    if ((!std::isfinite(range) && range > 0 && inf_is_valid) || (std::isnan(range) && nan_is_valid))
     {
       message.ranges[ i ] = message.range_max - epsilon;
     }
